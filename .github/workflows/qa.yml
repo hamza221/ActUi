@@ -46,7 +46,7 @@ jobs:
       - name: Install dependencies
         run: npm ci
       - name: Run unit and integration tests
-        run: npm run test:unit
+        run: npm test
 
   build:
     name: Production build
@@ -79,3 +79,33 @@ jobs:
           cache: npm
       - name: Audit production dependencies
         run: npm audit --omit=dev --audit-level=high
+
+  summary:
+    name: QA summary
+    if: ${{ always() }}
+    needs:
+      - lint
+      - test
+      - build
+      - dependency-audit
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Report job results
+        env:
+          LINT_RESULT: ${{ needs.lint.result }}
+          TEST_RESULT: ${{ needs.test.result }}
+          BUILD_RESULT: ${{ needs.build.result }}
+          AUDIT_RESULT: ${{ needs['dependency-audit'].result }}
+        run: |
+          printf 'Lint: %s\n' "$LINT_RESULT"
+          printf 'Tests: %s\n' "$TEST_RESULT"
+          printf 'Build: %s\n' "$BUILD_RESULT"
+          printf 'Dependency audit: %s\n' "$AUDIT_RESULT"
+
+          for result in "$LINT_RESULT" "$TEST_RESULT" "$BUILD_RESULT" "$AUDIT_RESULT"; do
+            if [ "$result" != "success" ]; then
+              echo "One or more required QA jobs did not succeed."
+              exit 1
+            fi
+          done
