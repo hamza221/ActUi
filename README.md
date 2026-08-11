@@ -1,3 +1,5 @@
+> **Install with an agent:** Give your coding agent the [harness-agnostic installation prompt](docs/INSTALL_WITH_AGENT.md) to install ActUI, its runtime requirements, and the bundled agent skill.
+
 # ActUI
 
 ActUI is a local GitHub Actions workbench for humans and coding agents. It discovers workflows in a repository, delegates their execution to [nektos/act](https://github.com/nektos/act), and presents jobs, dependency state, logs, agent notes, approvals, and cancellation in one browser dashboard.
