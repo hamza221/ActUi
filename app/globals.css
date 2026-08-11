@@ -373,6 +373,37 @@ kbd { color: var(--faint); background: white; border: 1px solid var(--line); bor
 .environment-note strong { flex: none; font-size: 11px; }
 .environment-note p { margin: 0; font-size: 11px; line-height: 1.6; }
 
+.secrets-view { max-width: 1220px; margin: 0 auto; }
+.secrets-view .view-heading code { font: inherit; }
+.secrets-layout { display: grid; grid-template-columns: 270px minmax(0, 1fr); min-height: 480px; overflow: hidden; border: 1px solid var(--line); border-radius: 12px; background: white; box-shadow: 0 1px 2px rgb(18 24 18 / 3%); }
+.secret-profiles { display: flex; flex-direction: column; min-width: 0; padding: 18px; border-right: 1px solid var(--line); background: var(--panel-soft); }
+.secret-profiles > div:first-child { display: flex; align-items: center; justify-content: space-between; margin-bottom: 13px; }
+.secret-profiles > div:first-child p { margin: 0; }
+.secret-profiles > div:first-child strong { color: var(--muted); font-size: 10px; }
+.secret-profile-list { display: grid; gap: 5px; }
+.secret-profile-list > p { margin: 18px 5px; color: var(--faint); font-size: 10px; text-align: center; }
+.secret-profile-list button { display: flex; align-items: center; justify-content: space-between; min-height: 51px; padding: 8px 10px; border: 1px solid transparent; border-radius: 8px; color: var(--muted); background: transparent; text-align: left; }
+.secret-profile-list button:hover, .secret-profile-list button.active { border-color: #c8d8cd; color: var(--ink); background: white; }
+.secret-profile-list button > span:first-child { display: grid; gap: 3px; }
+.secret-profile-list button strong { font-size: 11px; }
+.secret-profile-list button small { color: var(--faint); font-size: 9px; }
+.new-profile-form { display: grid; gap: 9px; margin-top: auto; padding-top: 18px; border-top: 1px solid var(--line); }
+.new-profile-form label, .secret-entry-form label { display: grid; gap: 6px; color: var(--muted); font-size: 10px; font-weight: 650; }
+.new-profile-form input, .secret-entry-form input { width: 100%; height: 38px; padding: 0 10px; border: 1px solid var(--line); border-radius: 7px; color: var(--ink); background: white; }
+.secret-profile-panel { min-width: 0; padding: 24px; }
+.secret-profile-panel > header { display: flex; align-items: flex-start; justify-content: space-between; gap: 20px; padding-bottom: 20px; border-bottom: 1px solid var(--line); }
+.secret-profile-panel h2 { margin: 2px 0 7px; font-size: 22px; letter-spacing: -.035em; }
+.secret-profile-panel header p:last-child { max-width: 560px; margin: 0; color: var(--faint); font-size: 10px; line-height: 1.55; }
+.danger-button { min-height: 34px; padding: 0 11px; border: 1px solid #e0b8b3; border-radius: 7px; color: #8e3f38; background: #fff6f5; font-size: 10px; font-weight: 650; }
+.secret-name-list { display: grid; gap: 7px; margin: 20px 0; }
+.secret-name-list > div:not(.empty-state) { display: grid; grid-template-columns: 46px minmax(0, 1fr) auto; align-items: center; gap: 10px; min-height: 46px; padding: 7px 10px; border: 1px solid var(--line); border-radius: 8px; }
+.secret-name-list > div > span { overflow: hidden; color: #849087; font-size: 7px; letter-spacing: .06em; white-space: nowrap; }
+.secret-name-list code { overflow: hidden; color: #315540; font: 11px var(--font-geist-mono), monospace; text-overflow: ellipsis; }
+.secret-name-list button { border: 0; color: #90534d; background: transparent; font-size: 9px; font-weight: 650; }
+.secret-entry-form { display: grid; grid-template-columns: minmax(160px, .7fr) minmax(220px, 1.3fr) auto; align-items: end; gap: 10px; padding-top: 20px; border-top: 1px solid var(--line); }
+.secret-entry-form .primary-button { white-space: nowrap; }
+.secret-storage-note code { overflow-wrap: anywhere; font: 10px var(--font-geist-mono), monospace; }
+
 .palette-backdrop { position: fixed; z-index: 110; inset: 0; display: grid; place-items: start center; padding: min(16vh, 130px) 18px 18px; background: rgb(18 22 19 / 48%); backdrop-filter: blur(5px); }
 .command-palette { width: min(560px, 100%); overflow: hidden; border: 1px solid #bac0b9; border-radius: 14px; background: white; box-shadow: 0 28px 90px rgb(7 14 9 / 28%); }
 .command-palette > header { min-height: 58px; display: grid; grid-template-columns: 24px minmax(0, 1fr) auto; align-items: center; gap: 10px; padding: 0 15px; border-bottom: 1px solid var(--line); }
@@ -464,6 +495,11 @@ kbd { color: var(--faint); background: white; border: 1px solid var(--line); bor
   .view-heading { min-height: 0; flex-direction: column; }
   .environment-grid { grid-template-columns: 1fr; }
   .environment-note { flex-direction: column; gap: 7px; }
+  .secrets-layout { grid-template-columns: 1fr; }
+  .secret-profiles { border-right: 0; border-bottom: 1px solid var(--line); }
+  .secret-profile-list { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .new-profile-form { margin-top: 18px; }
+  .secret-entry-form { grid-template-columns: 1fr; }
 }
 
 /* Handbook */

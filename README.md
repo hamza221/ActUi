@@ -44,6 +44,7 @@ actui . --act-path /custom/path/to/act --trust
 ```bash
 actui discover . --json
 actui run --workflow ci.yml --event pull_request --json
+actui run --workflow release.yml --event workflow_dispatch --secret-profile local --approved --json
 actui wait <run-id> --after-cursor 12 --json
 actui get <run-id> --json
 actui logs <run-id> --failed --json
@@ -64,6 +65,18 @@ actui mcp
 
 It exposes `discover_workflows`, `start_run`, `wait_for_run`, `get_run`, `get_failed_steps`, `read_logs`, `cancel_run`, `rerun_failed`, and `open_dashboard`.
 
+## Local secret profiles
+
+The dashboard's **Secrets** view stores repository-specific profiles as plaintext `.env` files outside the checkout. Files and their containing repository directory use user-only permissions, and API responses expose names but never values. Select a profile before starting a run; ActUI resolves it at run time, copies its values into the existing private temporary `act --secret-file`, redacts exact values from logs, and deletes the temporary file when the run finishes.
+
+Agent-started runs must receive explicit human approval before they can use a profile:
+
+```bash
+actui run --workflow ci.yml --secret-profile local --approved --json
+```
+
+Profiles are local copies: GitHub does not permit downloading stored Actions secret values. Enter values locally in ActUI and treat the files as plaintext credentials available to your operating-system account. ActUI does not use or configure an OS keychain.
+
 Install the bundled Codex workflow skill with:
 
 ```bash
@@ -75,8 +88,8 @@ The skill follows a constrained discover → run smallest scope → wait → ins
 ## Safety model
 
 - Repository trust is explicit for every launched session.
-- Agent runs receive no secrets by default.
-- Secrets are written only to user-private temporary files and deleted after the run.
+- Agent runs receive no secrets by default, and local profiles require explicit human approval for agent-started runs.
+- Persisted profiles are private plaintext `.env` files outside the checkout; per-run copies are deleted after execution.
 - Deployment, publishing, release, production, and privileged jobs are detected and require per-run approval.
 - The UI shows the exact Act command preview before execution.
 - Run, agent-note, cancellation, and result events enter a local audit trail.

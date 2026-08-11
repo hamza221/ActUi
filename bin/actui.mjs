@@ -14,6 +14,7 @@ import { discoverWorkflows, publicWorkflow } from "../server/discover.mjs";
 import { createServer } from "../server/http.mjs";
 import { runMcpServer } from "../server/mcp.mjs";
 import { RunManager } from "../server/run-manager.mjs";
+import { LocalSecretStore } from "../server/secret-store.mjs";
 import { sessionPath } from "../server/client.mjs";
 
 const execFileAsync = promisify(execFile);
@@ -23,7 +24,7 @@ const packageJson = require("../package.json");
 const COMMANDS = new Set(["discover", "run", "wait", "get", "logs", "cancel", "rerun-failed", "mcp", "install-skill"]);
 
 function usage() {
-  console.log(`ActUI ${packageJson.version}\n\nLaunch dashboard:\n  actui [repository] --trust\n\nAgent and JSON commands:\n  actui discover [repository] --json\n  actui run --workflow <file> [--event pull_request] --json\n  actui wait <run-id> [--after-cursor 0] --json\n  actui get <run-id> --json\n  actui logs <run-id> [--failed] [--from 1] [--to 200] --json\n  actui cancel <run-id> --json\n  actui rerun-failed <run-id> [--files a.ts,b.ts] --json\n  actui mcp\n  actui install-skill\n\nLaunch options:\n  --port <port>       Browser-facing port\n  --act-path <path>   Use a specific Act executable\n  --no-open           Do not open the browser\n  --trust             Trust this repository for local workflow execution\n  --version           Print the version\n  --help              Show this help`);
+  console.log(`ActUI ${packageJson.version}\n\nLaunch dashboard:\n  actui [repository] --trust\n\nAgent and JSON commands:\n  actui discover [repository] --json\n  actui run --workflow <file> [--event pull_request] [--secret-profile local] --json\n  actui wait <run-id> [--after-cursor 0] --json\n  actui get <run-id> --json\n  actui logs <run-id> [--failed] [--from 1] [--to 200] --json\n  actui cancel <run-id> --json\n  actui rerun-failed <run-id> [--files a.ts,b.ts] --json\n  actui mcp\n  actui install-skill\n\nLaunch options:\n  --port <port>       Browser-facing port\n  --act-path <path>   Use a specific Act executable\n  --no-open           Do not open the browser\n  --trust             Trust this repository for local workflow execution\n  --version           Print the version\n  --help              Show this help`);
 }
 
 function optionValues(argv) {
@@ -132,6 +133,7 @@ async function runCommand(command, argv) {
       artifacts: Boolean(values.get("artifacts")),
       verbose: Boolean(values.get("verbose")),
       approved: Boolean(values.get("approved")),
+      secretProfile: values.get("secret-profile"),
       initiator: { type: "agent", name: values.get("agent") || "ActUI CLI" },
       agent: { name: values.get("agent") || "ActUI CLI", phase: "testing", attempt: Number(values.get("attempt")) || 1, maxAttempts: Number(values.get("max-attempts")) || 3 },
     } });
@@ -164,7 +166,9 @@ async function launch(argv) {
   const [act, docker] = await Promise.all([inspect(actPath, ["--version"], "Act"), inspect(dockerPath, ["version", "--format", "Docker {{.Server.Version}}"], "Docker")]);
   const actInstallation = actInstallationFor();
   const trusted = Boolean(values.get("trust"));
-  const manager = new RunManager({ repo, actPath: act.available ? actPath : null, actInstallation, workflows, trusted });
+  const secretStore = new LocalSecretStore(repo);
+  await secretStore.initialize();
+  const manager = new RunManager({ repo, actPath: act.available ? actPath : null, actInstallation, workflows, trusted, secretStore });
   await manager.initialize();
 
   const token = crypto.randomBytes(24).toString("base64url");
@@ -178,7 +182,7 @@ async function launch(argv) {
   const baseUrl = `http://127.0.0.1:${mainPort}`;
   const dashboardUrl = `${baseUrl}/?token=${encodeURIComponent(token)}`;
   const health = { product: "ActUI", version: packageJson.version, repo, repoName: path.basename(repo), act: { ...act, installation: actInstallation }, docker, trusted, dashboardUrl };
-  const server = createServer({ token, uiPort, health, workflows: workflows.map(publicWorkflow), manager });
+  const server = createServer({ token, uiPort, health, workflows: workflows.map(publicWorkflow), manager, secretStore });
   await new Promise((resolve, reject) => { server.once("error", reject); server.listen(mainPort, "127.0.0.1", resolve); });
   await mkdir(path.dirname(sessionPath()), { recursive: true });
   await writeFile(sessionPath(), JSON.stringify({ pid: process.pid, repo, url: baseUrl, token, dashboardUrl }), { mode: 0o600 });
