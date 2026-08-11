@@ -1,10 +1,9 @@
 #!/usr/bin/env node
 import { execFile, spawn } from "node:child_process";
 import crypto from "node:crypto";
-import { access, copyFile, mkdir, realpath, writeFile } from "node:fs/promises";
+import { access, mkdir, realpath, writeFile } from "node:fs/promises";
 import { createRequire } from "node:module";
 import net from "node:net";
-import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
@@ -15,6 +14,7 @@ import { createServer } from "../server/http.mjs";
 import { runMcpServer } from "../server/mcp.mjs";
 import { RunManager } from "../server/run-manager.mjs";
 import { sessionPath } from "../server/client.mjs";
+import { installSkill } from "../server/skill-installer.mjs";
 
 const execFileAsync = promisify(execFile);
 const packageRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
@@ -23,7 +23,7 @@ const packageJson = require("../package.json");
 const COMMANDS = new Set(["discover", "run", "wait", "get", "logs", "cancel", "rerun-failed", "mcp", "install-skill"]);
 
 function usage() {
-  console.log(`ActUI ${packageJson.version}\n\nLaunch dashboard:\n  actui [repository] --trust\n\nAgent and JSON commands:\n  actui discover [repository] --json\n  actui run --workflow <file> [--event pull_request] --json\n  actui wait <run-id> [--after-cursor 0] --json\n  actui get <run-id> --json\n  actui logs <run-id> [--failed] [--from 1] [--to 200] --json\n  actui cancel <run-id> --json\n  actui rerun-failed <run-id> [--files a.ts,b.ts] --json\n  actui mcp\n  actui install-skill\n\nLaunch options:\n  --port <port>       Browser-facing port\n  --act-path <path>   Use a specific Act executable\n  --no-open           Do not open the browser\n  --trust             Trust this repository for local workflow execution\n  --version           Print the version\n  --help              Show this help`);
+  console.log(`ActUI ${packageJson.version}\n\nLaunch dashboard:\n  actui [repository] --trust\n\nAgent and JSON commands:\n  actui discover [repository] --json\n  actui run --workflow <file> [--event pull_request] --json\n  actui wait <run-id> [--after-cursor 0] --json\n  actui get <run-id> --json\n  actui logs <run-id> [--failed] [--from 1] [--to 200] --json\n  actui cancel <run-id> --json\n  actui rerun-failed <run-id> [--files a.ts,b.ts] --json\n  actui mcp\n  actui install-skill [--target codex|claude|agent-skills|auto]\n\nSkill install options:\n  --target <target>       Harness target; defaults to codex\n  --destination <path>   Explicit skills directory\n  --dry-run              Resolve and report without writing\n\nLaunch options:\n  --port <port>       Browser-facing port\n  --act-path <path>   Use a specific Act executable\n  --no-open           Do not open the browser\n  --trust             Trust this repository for local workflow execution\n  --version           Print the version\n  --help              Show this help`);
 }
 
 function optionValues(argv) {
@@ -33,7 +33,7 @@ function optionValues(argv) {
     const value = argv[index];
     if (value.startsWith("--")) {
       const name = value.slice(2);
-      if (["json", "failed", "approved", "trust", "no-open", "offline", "artifacts", "verbose"].includes(name)) values.set(name, true);
+      if (["json", "failed", "approved", "trust", "no-open", "offline", "artifacts", "verbose", "dry-run"].includes(name)) values.set(name, true);
       else {
         const next = argv[++index];
         if (next === undefined) throw new Error(`Missing value for --${name}.`);
@@ -108,15 +108,13 @@ async function runCommand(command, argv) {
   }
   if (command === "mcp") return runMcpServer();
   if (command === "install-skill") {
-    const destination = path.join(process.env.CODEX_HOME || path.join(os.homedir(), ".codex"), "skills", "actui-test-and-fix");
-    await mkdir(path.join(destination, "references"), { recursive: true });
-    await mkdir(path.join(destination, "agents"), { recursive: true });
-    await Promise.all([
-      copyFile(path.join(packageRoot, "skills", "actui-test-and-fix", "SKILL.md"), path.join(destination, "SKILL.md")),
-      copyFile(path.join(packageRoot, "skills", "actui-test-and-fix", "references", "event-schema.md"), path.join(destination, "references", "event-schema.md")),
-      copyFile(path.join(packageRoot, "skills", "actui-test-and-fix", "agents", "openai.yaml"), path.join(destination, "agents", "openai.yaml")),
-    ]);
-    return output({ installed: true, destination });
+    const destination = values.get("destination");
+    return output(await installSkill({
+      source: path.join(packageRoot, "skills", "actui-test-and-fix"),
+      target: values.get("target") || (destination ? "auto" : "codex"),
+      destination,
+      dryRun: Boolean(values.get("dry-run")),
+    }));
   }
   if (command === "run") {
     const workflow = values.get("workflow");

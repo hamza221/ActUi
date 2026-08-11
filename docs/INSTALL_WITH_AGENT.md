@@ -42,7 +42,13 @@ Install the bundled agent skill:
    - references/
    - agents/
 10. If the harness supports the Agent Skills directory convention, use its configured skills directory.
-11. For Codex-compatible environments, `actui install-skill` may be used.
+11. Use the matching installer target when available:
+   - Codex: `actui install-skill` or `actui install-skill --target codex`
+   - Claude: `actui install-skill --target claude`
+   - Agent Skills directory: `actui install-skill --target agent-skills`
+   - Automatic detection: `actui install-skill --target auto`
+   - Other harnesses: `actui install-skill --destination /path/to/harness/skills`
+   Run with `--dry-run` first when detection or the destination is uncertain.
 12. If the harness has no skill-installation mechanism:
    - Do not claim the skill was installed.
    - Report the skill's absolute path.

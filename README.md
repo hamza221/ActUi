@@ -64,11 +64,16 @@ actui mcp
 
 It exposes `discover_workflows`, `start_run`, `wait_for_run`, `get_run`, `get_failed_steps`, `read_logs`, `cancel_run`, `rerun_failed`, and `open_dashboard`.
 
-Install the bundled Codex workflow skill with:
+Install the bundled workflow skill for Codex (the backwards-compatible default), Claude, or a generic Agent Skills directory with:
 
 ```bash
 actui install-skill
+actui install-skill --target claude
+actui install-skill --target agent-skills
+actui install-skill --target auto
 ```
+
+Use `--destination /path/to/skills` for another harness, and append `--dry-run` to inspect the resolved target without writing. Auto-detection refuses to guess when multiple harnesses are configured.
 
 The skill follows a constrained discover → run smallest scope → wait → inspect failures → fix only when authorized → rerun failed scope loop.
 
