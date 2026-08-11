@@ -27,7 +27,7 @@
     "yaml": "2.9.0"
   },
   "devDependencies": {
-    "@cloudflare/vite-plugin": "1.37.1",
+    "@cloudflare/vite-plugin": "1.51.3",
     "@eslint/js": "9.39.4",
     "@next/eslint-plugin-next": "16.2.6",
     "@tailwindcss/postcss": "4.2.1",
@@ -48,7 +48,7 @@
     "typescript-eslint": "8.59.3",
     "vinext": "1.0.0-beta.2",
     "vite": "8.2.1",
-    "wrangler": "4.92.0"
+    "wrangler": "4.121.0"
   },
   "type": "module"
 }
