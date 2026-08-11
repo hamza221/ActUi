@@ -97,6 +97,17 @@ export type Health = {
   dashboardUrl?: string;
 };
 
+export type SecretProfile = {
+  name: string;
+  secretNames: string[];
+  updatedAt?: string;
+};
+
+export type SecretStoreSummary = {
+  storagePath: string;
+  profiles: SecretProfile[];
+};
+
 export type RunRequest = {
   event: string;
   workflowIds: string[];
@@ -105,6 +116,7 @@ export type RunRequest = {
   eventPayload?: Record<string, unknown>;
   inputs?: Record<string, string>;
   secrets?: Record<string, string>;
+  secretProfile?: string;
   vars?: Record<string, string>;
   env?: Record<string, string>;
   matrix?: Record<string, string[]>;

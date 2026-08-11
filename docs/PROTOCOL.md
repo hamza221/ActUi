@@ -15,6 +15,10 @@ ActUI exposes one loopback HTTP control plane to the dashboard, JSON CLI, and MC
 - `POST /api/runs/{id}/notes` — add an agent phase/note/files-changed update.
 - `POST /api/runs/{id}/cancel` — cancel the shared Act process.
 - `POST /api/runs/{id}/rerun-failed` — rerun the smallest failed scope under the attempt limit.
+- `GET /api/secrets` — list local profile and secret names without returning values.
+- `POST /api/secrets/profiles` — create an empty local profile.
+- `PUT|DELETE /api/secrets/profiles/{profile}/secrets/{name}` — set or remove one local value.
+- `DELETE /api/secrets/profiles/{profile}` — delete a local profile.
 
 ## Cursor semantics
 

@@ -21,6 +21,7 @@ test("server-renders the ActUI dashboard", async () => {
   assert.match(html, /<title>ActUI — GitHub Actions, running locally<\/title>/i);
   assert.match(html, /Run your CI\. Stay in flow\./);
   assert.match(html, /Powered by/);
+  assert.match(html, /Secrets/);
   assert.match(html, /nektos\/act/);
   assert.doesNotMatch(html, /codex-preview|Your site is taking shape/);
 });

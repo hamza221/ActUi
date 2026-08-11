@@ -2,7 +2,7 @@ import { apiRequest, readSession } from "./client.mjs";
 
 const tools = [
   ["discover_workflows", "List workflows, triggers, jobs, matrices, and approval risks in the active repository.", { type: "object", properties: {} }],
-  ["start_run", "Start the smallest relevant Act-powered workflow run and return its dashboard URL.", { type: "object", required: ["event", "workflowIds"], properties: { event: { type: "string" }, workflowIds: { type: "array", items: { type: "string" } }, jobId: { type: "string" }, approved: { type: "boolean" }, agentName: { type: "string" }, attempt: { type: "integer" } } }],
+  ["start_run", "Start the smallest relevant Act-powered workflow run and return its dashboard URL.", { type: "object", required: ["event", "workflowIds"], properties: { event: { type: "string" }, workflowIds: { type: "array", items: { type: "string" } }, jobId: { type: "string" }, secretProfile: { type: "string", description: "Local secret profile name. Requires explicit human approval for agent runs." }, approved: { type: "boolean" }, agentName: { type: "string" }, attempt: { type: "integer" } } }],
   ["wait_for_run", "Wait up to 30 seconds for concise cursor-based run changes.", { type: "object", required: ["runId"], properties: { runId: { type: "string" }, afterCursor: { type: "integer" }, timeoutMs: { type: "integer" } } }],
   ["get_run", "Read the current structured run, job, agent, and audit state.", { type: "object", required: ["runId"], properties: { runId: { type: "string" } } }],
   ["get_failed_steps", "Return only failed workflow/job/step summaries and source annotations.", { type: "object", required: ["runId"], properties: { runId: { type: "string" } } }],
@@ -20,7 +20,7 @@ async function callTool(name, args = {}) {
   const session = await readSession();
   if (name === "discover_workflows") return apiRequest("/api/workflows", { session });
   if (name === "start_run") {
-    const result = await apiRequest("/api/runs", { method: "POST", session, body: { event: args.event, workflowIds: args.workflowIds, jobId: args.jobId, approved: args.approved, initiator: { type: "agent", name: args.agentName || "Coding agent" }, agent: { name: args.agentName || "Coding agent", phase: "testing", attempt: args.attempt || 1, maxAttempts: 3 } } });
+    const result = await apiRequest("/api/runs", { method: "POST", session, body: { event: args.event, workflowIds: args.workflowIds, jobId: args.jobId, secretProfile: args.secretProfile, approved: args.approved, initiator: { type: "agent", name: args.agentName || "Coding agent" }, agent: { name: args.agentName || "Coding agent", phase: "testing", attempt: args.attempt || 1, maxAttempts: 3 } } });
     return { ...result, dashboardUrl: `${session.dashboardUrl}#runs` };
   }
   if (name === "wait_for_run") return apiRequest(`/api/runs/${args.runId}/changes?after=${args.afterCursor || 0}&timeout=${Math.min(30_000, args.timeoutMs || 25_000)}`, { session });

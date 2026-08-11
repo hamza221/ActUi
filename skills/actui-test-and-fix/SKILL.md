@@ -22,7 +22,7 @@ Use ActUI as the single source of truth for local CI state. Keep the human dashb
 ## Safety invariants
 
 - Treat repository workflows as executable code. Require the trusted-repository gate.
-- Give agent-started runs no secrets by default. Never request or infer credentials.
+- Give agent-started runs no secrets by default. Never request or infer credentials. Use a named local secret profile only when the user explicitly authorizes that profile for the run, and keep values out of agent context.
 - Show the exact Act command preview before a protected run.
 - Keep deployments, publishing, privileged containers, production environments, and equivalent side effects behind explicit approval.
 - Preserve ActUI redaction and the shared audit trail.

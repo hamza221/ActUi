@@ -2,7 +2,7 @@
 
 import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
 import { demoHealth, demoRuns, demoWorkflows } from "../lib/demo";
-import type { Health, LogEntry, Run, RunJob, RunRequest, RunStatus, Workflow } from "../lib/types";
+import type { Health, LogEntry, Run, RunJob, RunRequest, RunStatus, SecretProfile, SecretStoreSummary, Workflow } from "../lib/types";
 
 const EVENT_LABELS: Record<string, string> = {
   pull_request: "Pull request",
@@ -23,7 +23,7 @@ const STATUS_LABELS: Record<RunStatus, string> = {
 };
 
 type JobPreset = { id: string; name: string; event: string; jobs: string[] };
-type AppView = "workflows" | "runs" | "environment";
+type AppView = "workflows" | "runs" | "secrets" | "environment";
 const RUN_OUTPUT_KEY = "__run_output__";
 const ACT_BUILTIN_RUNNERS = new Set(["ubuntu-latest", "ubuntu-24.04", "ubuntu-22.04", "ubuntu-20.04", "ubuntu-18.04", "self-hosted"]);
 
@@ -147,6 +147,13 @@ export function Dashboard() {
   const [isLaunching, setIsLaunching] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
   const [now, setNow] = useState(0);
+  const [secretProfiles, setSecretProfiles] = useState<SecretProfile[]>([]);
+  const [secretStoragePath, setSecretStoragePath] = useState("");
+  const [selectedSecretProfile, setSelectedSecretProfile] = useState("");
+  const [newProfileName, setNewProfileName] = useState("");
+  const [newSecretName, setNewSecretName] = useState("");
+  const [newSecretValue, setNewSecretValue] = useState("");
+  const [secretBusy, setSecretBusy] = useState(false);
   const [advanced, setAdvanced] = useState({ concurrency: 4, architecture: "", platform: "", offline: false, artifacts: true, verbose: false, approved: false });
 
   useEffect(() => {
@@ -155,7 +162,8 @@ export function Dashboard() {
       api<Health>("/api/health"),
       api<{ workflows: Workflow[] }>("/api/workflows"),
       api<{ runs: Run[] }>("/api/runs"),
-    ]).then(([healthData, workflowData, runData]) => {
+      api<SecretStoreSummary>("/api/secrets"),
+    ]).then(([healthData, workflowData, runData, secretData]) => {
       if (!current) return;
       setHealth(healthData);
       setWorkflows(workflowData.workflows);
@@ -181,6 +189,8 @@ export function Dashboard() {
       setSelectedWorkflows(new Set([...nextJobs].map((key) => parseJobKey(key).workflowId)));
       setPresetsLoaded(true);
       setRuns(runData.runs);
+      setSecretProfiles(secretData.profiles);
+      setSecretStoragePath(secretData.storagePath);
       setConnected(true);
       if (runData.runs[0]) setActiveRunId((activeId) => activeId.startsWith("demo-") ? runData.runs[0].id : activeId);
     }).catch(() => { if (current) setConnected(false); });
@@ -210,7 +220,7 @@ export function Dashboard() {
   useEffect(() => {
     const readHash = () => {
       const next = window.location.hash.slice(1);
-      if (next === "workflows" || next === "runs" || next === "environment") setView(next);
+      if (next === "workflows" || next === "runs" || next === "secrets" || next === "environment") setView(next);
     };
     const onKeyDown = (event: KeyboardEvent) => {
       if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "k") {
@@ -236,6 +246,7 @@ export function Dashboard() {
   }, []);
 
   const activeRun = runs.find((run) => run.id === activeRunId) ?? runs[0];
+  const activeSecretProfile = secretProfiles.find((profile) => profile.name === selectedSecretProfile);
   const runOutputSelected = activeJobKey === RUN_OUTPUT_KEY || !activeRun?.jobs.length;
   const activeJob = runOutputSelected ? undefined : activeRun?.jobs.find((job) => jobKey(job.workflowId, job.id) === activeJobKey) ?? activeRun?.jobs[0];
   const streamedRunId = activeRun?.id;
@@ -369,6 +380,81 @@ export function Dashboard() {
     setActivePresetId("");
   };
 
+  const applySecretSummary = (summary: SecretStoreSummary) => {
+    setSecretProfiles(summary.profiles);
+    setSecretStoragePath(summary.storagePath);
+  };
+
+  const createSecretProfile = async (event: FormEvent) => {
+    event.preventDefault();
+    const name = newProfileName.trim();
+    if (!name) return setNotice("Enter a profile name.");
+    setSecretBusy(true);
+    try {
+      const summary = await api<SecretStoreSummary>("/api/secrets/profiles", { method: "POST", body: JSON.stringify({ name }) });
+      applySecretSummary(summary);
+      setSelectedSecretProfile(name);
+      setNewProfileName("");
+      setNotice(`Created local secret profile “${name}”.`);
+    } catch (error) {
+      setNotice(error instanceof Error ? error.message : "Unable to create the secret profile.");
+    } finally {
+      setSecretBusy(false);
+    }
+  };
+
+  const saveSecret = async (event: FormEvent) => {
+    event.preventDefault();
+    const name = newSecretName.trim();
+    if (!selectedSecretProfile) return setNotice("Select a secret profile first.");
+    if (!name) return setNotice("Enter a secret name.");
+    setSecretBusy(true);
+    try {
+      const summary = await api<SecretStoreSummary>(`/api/secrets/profiles/${encodeURIComponent(selectedSecretProfile)}/secrets/${encodeURIComponent(name)}`, {
+        method: "PUT",
+        body: JSON.stringify({ value: newSecretValue }),
+      });
+      applySecretSummary(summary);
+      setNewSecretName("");
+      setNotice(`Saved ${name} in “${selectedSecretProfile}”.`);
+    } catch (error) {
+      setNotice(error instanceof Error ? error.message : "Unable to save the secret.");
+    } finally {
+      setNewSecretValue("");
+      setSecretBusy(false);
+    }
+  };
+
+  const deleteSecret = async (name: string) => {
+    if (!selectedSecretProfile || !window.confirm(`Remove ${name} from ${selectedSecretProfile}?`)) return;
+    setSecretBusy(true);
+    try {
+      const summary = await api<SecretStoreSummary>(`/api/secrets/profiles/${encodeURIComponent(selectedSecretProfile)}/secrets/${encodeURIComponent(name)}`, { method: "DELETE" });
+      applySecretSummary(summary);
+      setNotice(`Removed ${name}.`);
+    } catch (error) {
+      setNotice(error instanceof Error ? error.message : "Unable to remove the secret.");
+    } finally {
+      setSecretBusy(false);
+    }
+  };
+
+  const deleteSecretProfile = async () => {
+    if (!selectedSecretProfile || !window.confirm(`Delete the local profile ${selectedSecretProfile}?`)) return;
+    const profile = selectedSecretProfile;
+    setSecretBusy(true);
+    try {
+      const summary = await api<SecretStoreSummary>(`/api/secrets/profiles/${encodeURIComponent(profile)}`, { method: "DELETE" });
+      applySecretSummary(summary);
+      setSelectedSecretProfile("");
+      setNotice(`Deleted local secret profile “${profile}”.`);
+    } catch (error) {
+      setNotice(error instanceof Error ? error.message : "Unable to delete the secret profile.");
+    } finally {
+      setSecretBusy(false);
+    }
+  };
+
   const launchRun = async (event: FormEvent) => {
     event.preventDefault();
     if (!health.act.available) {
@@ -401,6 +487,7 @@ export function Dashboard() {
         artifacts: advanced.artifacts,
         verbose: advanced.verbose,
         approved: advanced.approved,
+        secretProfile: selectedSecretProfile || undefined,
         initiator: { type: "human", name: "Local user" },
       };
       const result = await api<{ run: Run }>("/api/runs", { method: "POST", body: JSON.stringify(payload) });
@@ -454,6 +541,7 @@ export function Dashboard() {
         <nav>
           <button className={`nav-item ${view === "workflows" ? "active" : ""}`} type="button" onClick={() => navigateView("workflows")}><span aria-hidden="true">⌁</span>Workflows</button>
           <button className={`nav-item ${view === "runs" ? "active" : ""}`} type="button" onClick={() => navigateView("runs")}><span aria-hidden="true">◷</span>Run history</button>
+          <button className={`nav-item ${view === "secrets" ? "active" : ""}`} type="button" onClick={() => navigateView("secrets")}><span aria-hidden="true">◇</span>Secrets</button>
           <button className={`nav-item ${view === "environment" ? "active" : ""}`} type="button" onClick={() => navigateView("environment")}><span aria-hidden="true">⬡</span>Environment</button>
           <a className="nav-item" href="/docs"><span aria-hidden="true">?</span>Handbook</a>
         </nav>
@@ -529,6 +617,13 @@ export function Dashboard() {
               {events.map((event) => <option key={event} value={event}>{EVENT_LABELS[event] ?? event}</option>)}
             </select>
           </div>
+          <div className="event-select secret-profile-select">
+            <span>Secrets</span>
+            <select value={selectedSecretProfile} onChange={(event) => setSelectedSecretProfile(event.target.value)} aria-label="Local secret profile">
+              <option value="">No secrets</option>
+              {secretProfiles.map((profile) => <option value={profile.name} key={profile.name}>{profile.name} · {profile.secretNames.length}</option>)}
+            </select>
+          </div>
           <button className="secondary-button" type="button" onClick={() => setShowSettings(true)}><span aria-hidden="true">☷</span> Configure</button>
           <button className="secondary-button command-button" type="button" onClick={() => setShowCommand((value) => !value)}><span aria-hidden="true">›_</span> Command</button>
         </form>
@@ -549,7 +644,7 @@ export function Dashboard() {
 
         {showCommand ? (
           <div className="command-preview" role="status">
-            <code>act {selectedEvent} {selectedWorkflows.size === 1 ? `-W .github/workflows/${[...selectedWorkflows][0]}` : ""} {[...selectedJobs].map((key) => `-j ${parseJobKey(key).jobId}`).join(" ")} --json --concurrent-jobs {advanced.concurrency}{platformMappings(advanced.platform).map((mapping) => ` --platform ${mapping}`).join("")}</code>
+            <code>act {selectedEvent} {selectedWorkflows.size === 1 ? `-W .github/workflows/${[...selectedWorkflows][0]}` : ""} {[...selectedJobs].map((key) => `-j ${parseJobKey(key).jobId}`).join(" ")} --json --concurrent-jobs {advanced.concurrency}{platformMappings(advanced.platform).map((mapping) => ` --platform ${mapping}`).join("")}{selectedSecretProfile ? ` --secret-file <local-profile:${selectedSecretProfile}>` : ""}</code>
             <button type="button" onClick={() => navigator.clipboard?.writeText(`act ${selectedEvent} --json --concurrent-jobs ${advanced.concurrency}`)}>Copy</button>
           </div>
         ) : null}
@@ -681,6 +776,43 @@ export function Dashboard() {
           ) : <EmptyState title="No runs yet" body="Select a workflow above to start your first local run." />}
         </section> : null}
 
+        {view === "secrets" ? <section className="secrets-view view-panel" id="secrets">
+          <div className="view-heading">
+            <div><p className="eyebrow">Local plaintext profiles</p><h1>Secrets</h1><p>Keep repository-specific values in private <code>.env</code> files outside the checkout, then select a profile when starting a run.</p></div>
+          </div>
+          <div className="secrets-layout">
+            <aside className="secret-profiles" aria-label="Local secret profiles">
+              <div><p className="eyebrow">Profiles</p><strong>{secretProfiles.length} local</strong></div>
+              <div className="secret-profile-list">
+                {secretProfiles.map((profile) => <button className={selectedSecretProfile === profile.name ? "active" : ""} type="button" key={profile.name} onClick={() => setSelectedSecretProfile(profile.name)}>
+                  <span><strong>{profile.name}</strong><small>{profile.secretNames.length} {profile.secretNames.length === 1 ? "secret" : "secrets"}</small></span><span aria-hidden="true">›</span>
+                </button>)}
+                {!secretProfiles.length ? <p>No profiles yet.</p> : null}
+              </div>
+              <form className="new-profile-form" onSubmit={createSecretProfile}>
+                <label><span>New profile</span><input value={newProfileName} onChange={(event) => setNewProfileName(event.target.value)} placeholder="local or staging" autoComplete="off" /></label>
+                <button className="secondary-button" type="submit" disabled={secretBusy}>Create</button>
+              </form>
+            </aside>
+
+            <div className="secret-profile-panel">
+              {activeSecretProfile ? <>
+                <header><div><p className="eyebrow">Selected profile</p><h2>{activeSecretProfile.name}</h2><p>Values are never returned by the API. Saving the same name replaces its local value.</p></div><button className="danger-button" type="button" onClick={deleteSecretProfile} disabled={secretBusy}>Delete profile</button></header>
+                <div className="secret-name-list">
+                  {activeSecretProfile.secretNames.map((name) => <div key={name}><span aria-hidden="true">●●●●</span><code>{name}</code><button type="button" onClick={() => deleteSecret(name)} disabled={secretBusy}>Remove</button></div>)}
+                  {!activeSecretProfile.secretNames.length ? <EmptyState title="This profile is empty" body="Add the first name and value below." /> : null}
+                </div>
+                <form className="secret-entry-form" onSubmit={saveSecret}>
+                  <label><span>Secret name</span><input value={newSecretName} onChange={(event) => setNewSecretName(event.target.value.toUpperCase())} placeholder="API_TOKEN" autoCapitalize="characters" autoComplete="off" spellCheck={false} /></label>
+                  <label><span>Secret value</span><input type="password" value={newSecretValue} onChange={(event) => setNewSecretValue(event.target.value)} placeholder="Stored only on this machine" autoComplete="new-password" spellCheck={false} /></label>
+                  <button className="primary-button" type="submit" disabled={secretBusy || !newSecretName.trim()}>Save secret</button>
+                </form>
+              </> : <EmptyState title="Select or create a profile" body="Profiles group local values for a repository and can be attached to a workflow run." />}
+            </div>
+          </div>
+          <div className="environment-note secret-storage-note"><strong>Plaintext at rest</strong><p>Profiles are mode-0600 files under <code>{secretStoragePath || "the ActUI configuration directory"}</code>. They stay outside Git, browser storage, run history, and API responses. Anyone with access to your operating-system account may still read them.</p></div>
+        </section> : null}
+
         {view === "environment" ? <section className="environment-view view-panel" id="environment">
           <div className="view-heading"><div><p className="eyebrow">Local execution</p><h1>Environment</h1><p>Review the tools, trust boundary, and repository context used by every ActUI run.</p></div><button className="secondary-button" type="button" onClick={() => setShowSettings(true)}>Runner settings</button></div>
           <div className="environment-grid">
@@ -701,6 +833,7 @@ export function Dashboard() {
               {([
                 { id: "workflows" as const, icon: "⌁", label: "Workflows", detail: "Select workflows, jobs, and saved lists" },
                 { id: "runs" as const, icon: "◷", label: "Run history", detail: "Inspect retained runs and live logs" },
+                { id: "secrets" as const, icon: "◇", label: "Secrets", detail: "Manage local plaintext profiles" },
                 { id: "environment" as const, icon: "⬡", label: "Environment", detail: "Review Act, Docker, trust, and repository" },
               ]).filter((command) => `${command.label} ${command.detail}`.toLowerCase().includes(paletteQuery.toLowerCase())).map((command) => (
                 <button type="button" key={command.id} onClick={() => navigateView(command.id)}>
@@ -726,7 +859,7 @@ export function Dashboard() {
               <label className="toggle-row"><span><strong>Verbose logs</strong><small>Include Act debug output in the stream.</small></span><input aria-label="Enable verbose logs" type="checkbox" checked={advanced.verbose} onChange={(event) => setAdvanced((current) => ({ ...current, verbose: event.target.checked }))} /></label>
               <label className="toggle-row approval-row"><span><strong>Approve protected jobs</strong><small>Required when ActUI detects deployment, publishing, production, or privileged commands. Review the command preview first.</small></span><input aria-label="Approve protected jobs" type="checkbox" checked={advanced.approved} onChange={(event) => setAdvanced((current) => ({ ...current, approved: event.target.checked }))} /></label>
             </div>
-            <div className="settings-note"><span aria-hidden="true">i</span><p>{health.trusted === false ? "This repository is read-only. Restart ActUI with --trust after reviewing its workflows to enable runs. " : ""}Secrets are accepted only when a run starts, kept out of command history, and never returned by the API.</p></div>
+            <div className="settings-note"><span aria-hidden="true">i</span><p>{health.trusted === false ? "This repository is read-only. Restart ActUI with --trust after reviewing its workflows to enable runs. " : ""}Selected local profiles are resolved only when a run starts, kept out of command history, and never returned by the API.</p></div>
             <footer><button className="secondary-button" type="button" onClick={() => setShowSettings(false)}>Cancel</button><button className="primary-button" type="button" onClick={() => setShowSettings(false)}>Save configuration</button></footer>
           </section>
         </div>

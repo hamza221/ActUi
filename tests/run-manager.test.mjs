@@ -65,6 +65,44 @@ test("shared manager streams cursors and redacts secrets", async () => {
   }
 });
 
+test("resolves local secret profiles at run time and requires approval for agents", async () => {
+  const storage = await mkdtemp(path.join(os.tmpdir(), "actui-runs-"));
+  const secretStore = { readProfile: async (name) => {
+    assert.equal(name, "local");
+    return { TOKEN: "super-secret-value" };
+  } };
+  await chmod(fixture, 0o755);
+  try {
+    const manager = new RunManager({ repo: "/tmp", actPath: fixture, workflows: [workflow], trusted: true, storage, secretStore });
+    await manager.initialize();
+    await assert.rejects(() => manager.create({
+      event: "pull_request",
+      workflowIds: ["ci.yml"],
+      secretProfile: "local",
+      initiator: { type: "agent", name: "Test agent" },
+    }), /human approval/i);
+
+    const started = await manager.create({
+      event: "pull_request",
+      workflowIds: ["ci.yml"],
+      secretProfile: "local",
+      approved: true,
+      initiator: { type: "agent", name: "Test agent" },
+    });
+    let snapshot = manager.get(started.id);
+    for (let attempt = 0; attempt < 10 && ["queued", "running", "blocked"].includes(snapshot.status); attempt += 1) {
+      await manager.waitForChanges(started.id, snapshot.cursor, 1_000);
+      snapshot = manager.get(started.id);
+    }
+    assert.equal(snapshot.status, "success");
+    assert.doesNotMatch(JSON.stringify(snapshot), /super-secret-value/);
+    assert.match(snapshot.logs[1].message, /\*\*\*/);
+    assert.deepEqual(manager.commandPreview([workflow], { event: "pull_request", secretProfile: "local" }).slice(-2), ["--secret-file", "<local-profile:local>"]);
+  } finally {
+    await rm(storage, { recursive: true, force: true });
+  }
+});
+
 test("untrusted repositories cannot execute", async () => {
   const storage = await mkdtemp(path.join(os.tmpdir(), "actui-runs-"));
   try {

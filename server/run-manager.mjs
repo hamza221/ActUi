@@ -73,7 +73,7 @@ function envFile(record) {
 }
 
 export class RunManager {
-  constructor({ repo, actPath, actInstallation, workflows, trusted = false, storage }) {
+  constructor({ repo, actPath, actInstallation, workflows, trusted = false, storage, secretStore }) {
     this.repo = repo;
     this.actPath = actPath;
     this.actInstallation = actInstallation;
@@ -84,6 +84,7 @@ export class RunManager {
     this.events.setMaxListeners(100);
     this.storage = storage ?? cacheRoot();
     this.trusted = trusted;
+    this.secretStore = secretStore;
     this.changes = new Map();
     this.rerunRequests = new Map();
     this.redactions = new Map();
@@ -191,6 +192,14 @@ export class RunManager {
     const selected = [...new Set(request.workflowIds ?? [])].map((id) => this.workflows.get(id));
     if (!selected.length || selected.some((item) => !item)) throw new Error("Select one or more valid workflows.");
     if (!request.event || typeof request.event !== "string") throw new Error("A workflow event is required.");
+    if (request.secretProfile && request.initiator?.type === "agent" && !request.approved) {
+      throw new Error("Human approval is required before an agent run can use a local secret profile.");
+    }
+    if (request.secretProfile) {
+      if (!this.secretStore) throw new Error("Local secret profiles are not available in this session.");
+      const storedSecrets = await this.secretStore.readProfile(request.secretProfile);
+      request = { ...request, secrets: { ...storedSecrets, ...(request.secrets ?? {}) } };
+    }
     const riskyJobs = selected.flatMap((workflow) => workflow.jobs.filter((job) => job.requiresApproval));
     if (riskyJobs.length && !request.approved) throw new Error(`Approval required for: ${riskyJobs.map((job) => job.name).join(", ")}. Review the exact command and approve the run.`);
 
@@ -422,6 +431,7 @@ export class RunManager {
     for (const platform of Array.isArray(request.platform) ? request.platform : request.platform ? [request.platform] : []) args.push("--platform", platform);
     if (request.offline) args.push("--action-offline-mode");
     if (request.artifacts) args.push("--artifact-server-path", "<temporary-artifact-directory>");
+    if (request.secretProfile) args.push("--secret-file", `<local-profile:${request.secretProfile}>`);
     return args;
   }
 

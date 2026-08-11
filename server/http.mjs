@@ -37,7 +37,7 @@ function proxy(request, response, uiPort) {
   request.pipe(upstream);
 }
 
-export function createServer({ token, uiPort, health, workflows, manager }) {
+export function createServer({ token, uiPort, health, workflows, manager, secretStore }) {
   return http.createServer(async (request, response) => {
     const url = new URL(request.url ?? "/", "http://127.0.0.1");
     if (!url.pathname.startsWith("/api/")) return proxy(request, response, uiPort);
@@ -54,6 +54,28 @@ export function createServer({ token, uiPort, health, workflows, manager }) {
       if (request.method === "GET" && url.pathname === "/api/workflows") return json(response, 200, { workflows });
       if (request.method === "GET" && url.pathname === "/api/runs") return json(response, 200, { runs: manager.list() });
       if (request.method === "POST" && url.pathname === "/api/runs") return json(response, 202, { run: await manager.create(await readBody(request)) });
+      if (request.method === "GET" && url.pathname === "/api/secrets") return json(response, 200, await secretStore.summary());
+      if (request.method === "POST" && url.pathname === "/api/secrets/profiles") {
+        const body = await readBody(request);
+        await secretStore.createProfile(body.name);
+        return json(response, 201, await secretStore.summary());
+      }
+
+      const secretMatch = url.pathname.match(/^\/api\/secrets\/profiles\/([^/]+)\/secrets\/([^/]+)$/);
+      if (secretMatch && request.method === "PUT") {
+        const body = await readBody(request);
+        await secretStore.setSecret(decodeURIComponent(secretMatch[1]), decodeURIComponent(secretMatch[2]), body.value);
+        return json(response, 200, await secretStore.summary());
+      }
+      if (secretMatch && request.method === "DELETE") {
+        await secretStore.deleteSecret(decodeURIComponent(secretMatch[1]), decodeURIComponent(secretMatch[2]));
+        return json(response, 200, await secretStore.summary());
+      }
+      const profileMatch = url.pathname.match(/^\/api\/secrets\/profiles\/([^/]+)$/);
+      if (profileMatch && request.method === "DELETE") {
+        await secretStore.deleteProfile(decodeURIComponent(profileMatch[1]));
+        return json(response, 200, await secretStore.summary());
+      }
 
       const runMatch = url.pathname.match(/^\/api\/runs\/([0-9a-f-]+)$/i);
       if (request.method === "GET" && runMatch) {
