@@ -1,0 +1,30 @@
+name: Demo CI
+
+on:
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  quality:
+    name: Quality checks
+    runs-on: self-hosted
+    steps:
+      - name: Lint
+        run: echo "Lint passed"
+      - name: Typecheck
+        run: echo "Types passed"
+
+  test:
+    name: Test suite
+    runs-on: self-hosted
+    steps:
+      - name: Unit tests
+        run: echo "128 tests passed"
+
+  build:
+    name: Production build
+    needs: [quality, test]
+    runs-on: self-hosted
+    steps:
+      - name: Build
+        run: echo "Build complete"

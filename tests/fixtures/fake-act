@@ -1,0 +1,6 @@
+#!/bin/sh
+printf '%s\n' '{"jobID":"test","job":"CI/Test","step":"Unit tests","level":"info","msg":"⭐ Run Main Unit tests"}'
+printf '%s\n' '{"jobID":"test","job":"CI/Test","step":"Unit tests","level":"info","msg":"token is super-secret-value"}'
+printf '%s\n' '{"jobID":"test","job":"CI/Test","step":"Unit tests","stepResult":"success","level":"info","msg":"✅ Success - Main Unit tests"}'
+printf '%s\n' '{"jobID":"test","job":"CI/Test","jobResult":"success","level":"info","msg":"🏁 Job succeeded"}'
+exit 0

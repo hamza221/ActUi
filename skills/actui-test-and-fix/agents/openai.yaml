@@ -1,0 +1,4 @@
+interface:
+  display_name: "ActUI Test and Fix"
+  short_description: "Run focused local CI loops with ActUI"
+  default_prompt: "Use $actui-test-and-fix to run the smallest relevant local CI workflow, inspect failures, and rerun safely."
