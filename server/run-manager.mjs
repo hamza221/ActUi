@@ -28,6 +28,28 @@ function statusFromMessage(message) {
   return null;
 }
 
+function stepFromLog(fields, message) {
+  const explicit = String(fields.step ?? "").trim();
+  if (explicit && !["Set up job", "Complete job"].includes(explicit)) return explicit;
+  const inferred = String(message).match(/(?:Run|Failure\s+-|Success\s+-)\s+(?:Main\s+)?(.+?)\s*$/i)?.[1]?.trim();
+  return inferred && !["Set up job", "Complete job"].includes(inferred) ? inferred : undefined;
+}
+
+function logStream(fields, message, step) {
+  if (/^\s*\|/.test(message)) return "step";
+  if (!step && !fields.step) return "act";
+  return /^\s*(?:⭐|🐳|✅|❌|🏁)|^Cleaning up container\b/i.test(message) ? "act" : "step";
+}
+
+function trustedActArgs(value) {
+  if (value === undefined) return [];
+  if (!Array.isArray(value) || value.some((argument) => typeof argument !== "string" || argument.includes("\0"))) {
+    throw new Error("actArgs must be an array of strings.");
+  }
+  if (value.length > 100) throw new Error("actArgs is limited to 100 arguments.");
+  return value;
+}
+
 function parseLogfmt(line) {
   const fields = {};
   const pattern = /(?:^|\s)([A-Za-z_][\w.-]*)=("(?:\\.|[^"])*"|'(?:\\.|[^'])*'|\S+)/g;
@@ -73,7 +95,7 @@ function envFile(record) {
 }
 
 export class RunManager {
-  constructor({ repo, actPath, actInstallation, workflows, trusted = false, storage }) {
+  constructor({ repo, actPath, actInstallation, workflows, trusted = false, storage, dockerHost, githubRepository }) {
     this.repo = repo;
     this.actPath = actPath;
     this.actInstallation = actInstallation;
@@ -84,6 +106,8 @@ export class RunManager {
     this.events.setMaxListeners(100);
     this.storage = storage ?? cacheRoot();
     this.trusted = trusted;
+    this.dockerHost = dockerHost;
+    this.githubRepository = githubRepository;
     this.changes = new Map();
     this.rerunRequests = new Map();
     this.redactions = new Map();
@@ -191,12 +215,20 @@ export class RunManager {
     const selected = [...new Set(request.workflowIds ?? [])].map((id) => this.workflows.get(id));
     if (!selected.length || selected.some((item) => !item)) throw new Error("Select one or more valid workflows.");
     if (!request.event || typeof request.event !== "string") throw new Error("A workflow event is required.");
+    trustedActArgs(request.actArgs);
+    if (request.eventPayload !== undefined && (!request.eventPayload || typeof request.eventPayload !== "object" || Array.isArray(request.eventPayload))) {
+      throw new Error("eventPayload must be a JSON object.");
+    }
     const riskyJobs = selected.flatMap((workflow) => workflow.jobs.filter((job) => job.requiresApproval));
     if (riskyJobs.length && !request.approved) throw new Error(`Approval required for: ${riskyJobs.map((job) => job.name).join(", ")}. Review the exact command and approve the run.`);
 
     const id = crypto.randomUUID();
     const now = new Date().toISOString();
-    const requestedJobs = Array.isArray(request.jobSelections) ? request.jobSelections : [];
+    const requestedJobs = Array.isArray(request.jobSelections) && request.jobSelections.length
+      ? request.jobSelections
+      : request.jobId
+        ? selected.map((workflow) => ({ workflowId: workflow.id, jobId: request.jobId }))
+        : [];
     if (requestedJobs.length) {
       const invalidSelection = requestedJobs.find((item) => {
         const workflow = selected.find((candidate) => candidate.id === item.workflowId);
@@ -341,10 +373,13 @@ export class RunManager {
       for (const [name, values] of Object.entries(request.matrix ?? {})) {
         for (const value of Array.isArray(values) ? values : [values]) args.push("--matrix", `${name}:${value}`);
       }
+      const githubRepository = request.env?.GITHUB_REPOSITORY || this.githubRepository;
+      if (githubRepository) args.push("--env", `GITHUB_REPOSITORY=${githubRepository}`);
+      args.push(...trustedActArgs(request.actArgs));
 
       const child = spawn(this.actPath, args, {
         cwd: this.repo,
-        env: { ...process.env, NO_COLOR: "1" },
+        env: { ...process.env, ...(this.dockerHost ? { DOCKER_HOST: this.dockerHost } : {}), NO_COLOR: "1" },
         stdio: ["ignore", "pipe", "pipe"],
       });
       this.children.get(run.id)?.add(child);
@@ -372,12 +407,13 @@ export class RunManager {
     const haystack = `${prefix} ${parsed.message}`.toLowerCase();
     const candidates = workflow ? run.jobs.filter((job) => job.workflowId === workflow.id) : run.jobs;
     const job = candidates.find((candidate) => fields.jobID === candidate.id || haystack.includes(candidate.id.toLowerCase()) || haystack.includes(candidate.name.toLowerCase()));
+    const step = stepFromLog(fields, parsed.message);
     let nextStatus = fields.jobResult === "success" ? "success" : fields.jobResult === "failure" ? "failure" : statusFromMessage(parsed.message);
     if (fields.stepResult === "failure") nextStatus = "failure";
     else if (fields.stepResult === "success" && fields.step !== "Complete job" && nextStatus === "success") nextStatus = "running";
     if (job && nextStatus) {
       if (!job.startedAt && nextStatus === "running") job.startedAt = parsed.time;
-      if (fields.step && !["Set up job", "Complete job"].includes(fields.step)) job.currentStep = String(fields.step);
+      if (step) job.currentStep = step;
       job.status = nextStatus;
       if (!ACTIVE.has(nextStatus)) job.completedAt = parsed.time;
       if (nextStatus === "success") {
@@ -391,8 +427,10 @@ export class RunManager {
       time: parsed.time,
       level: parsed.level,
       message: safeMessage,
+      stream: logStream(fields, parsed.message, step),
       ...(workflow ? { workflowId: workflow.id } : {}),
       ...(job ? { jobId: job.id } : {}),
+      ...(step ? { step } : {}),
     });
     if (run.logs.length > MAX_MEMORY_LOGS) run.logs.splice(0, run.logs.length - MAX_MEMORY_LOGS);
     const latest = run.logs.at(-1);
@@ -422,6 +460,9 @@ export class RunManager {
     for (const platform of Array.isArray(request.platform) ? request.platform : request.platform ? [request.platform] : []) args.push("--platform", platform);
     if (request.offline) args.push("--action-offline-mode");
     if (request.artifacts) args.push("--artifact-server-path", "<temporary-artifact-directory>");
+    const githubRepository = request.env?.GITHUB_REPOSITORY || this.githubRepository;
+    if (githubRepository) args.push("--env", `GITHUB_REPOSITORY=${githubRepository}`);
+    args.push(...trustedActArgs(request.actArgs));
     return args;
   }
 
@@ -503,7 +544,7 @@ export class RunManager {
       return {
         workflow: job.workflowId,
         job: job.id,
-        step: job.currentStep ?? null,
+        step: error?.step ?? job.currentStep ?? null,
         exitCode: run.exitCode ?? 1,
         summary: error?.message ?? `${job.name} failed`,
         annotation: annotation ? { file: annotation.file, line: Number(annotation.line), column: annotation.column ? Number(annotation.column) : undefined } : null,

@@ -34,3 +34,21 @@ test("MCP announces readiness on stderr without contaminating JSON-RPC stdout", 
   assert.equal(messages[0].id, 1);
   assert.equal(messages[0].result.serverInfo.name, "actui");
 });
+
+test("MCP advertises event payloads, trusted Act arguments, and cursor continuation", async () => {
+  const child = spawn(process.execPath, [cliPath.pathname, "mcp"], { stdio: ["pipe", "pipe", "ignore"] });
+  let stdout = "";
+  child.stdout.setEncoding("utf8");
+  child.stdout.on("data", (chunk) => { stdout += chunk; });
+  child.stdin.end(`${JSON.stringify({ jsonrpc: "2.0", id: 1, method: "tools/list" })}\n`);
+  await new Promise((resolve, reject) => {
+    child.once("error", reject);
+    child.once("close", resolve);
+  });
+  const message = JSON.parse(stdout.trim());
+  const startRun = message.result.tools.find((tool) => tool.name === "start_run");
+  const wait = message.result.tools.find((tool) => tool.name === "wait_for_run");
+  assert.equal(startRun.inputSchema.properties.eventPayload.type, "object");
+  assert.equal(startRun.inputSchema.properties.actArgs.type, "array");
+  assert.match(wait.description, /nextCursor/);
+});

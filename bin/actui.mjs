@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 import { execFile, spawn } from "node:child_process";
 import crypto from "node:crypto";
-import { access, copyFile, mkdir, realpath, writeFile } from "node:fs/promises";
+import { access, copyFile, mkdir, readFile, realpath, writeFile } from "node:fs/promises";
 import { createRequire } from "node:module";
 import net from "node:net";
 import os from "node:os";
@@ -14,6 +14,7 @@ import { discoverWorkflows, publicWorkflow } from "../server/discover.mjs";
 import { createServer } from "../server/http.mjs";
 import { runMcpServer } from "../server/mcp.mjs";
 import { RunManager } from "../server/run-manager.mjs";
+import { resolveDockerHost, resolveGitHubRepository } from "../server/repository-environment.mjs";
 import { sessionPath } from "../server/client.mjs";
 
 const execFileAsync = promisify(execFile);
@@ -23,7 +24,22 @@ const packageJson = require("../package.json");
 const COMMANDS = new Set(["discover", "run", "wait", "get", "logs", "cancel", "rerun-failed", "mcp", "install-skill"]);
 
 function usage() {
-  console.log(`ActUI ${packageJson.version}\n\nLaunch dashboard:\n  actui [repository] --trust\n\nAgent and JSON commands:\n  actui discover [repository] --json\n  actui run --workflow <file> [--event pull_request] --json\n  actui wait <run-id> [--after-cursor 0] --json\n  actui get <run-id> --json\n  actui logs <run-id> [--failed] [--from 1] [--to 200] --json\n  actui cancel <run-id> --json\n  actui rerun-failed <run-id> [--files a.ts,b.ts] --json\n  actui mcp\n  actui install-skill\n\nLaunch options:\n  --port <port>       Browser-facing port\n  --act-path <path>   Use a specific Act executable\n  --no-open           Do not open the browser\n  --trust             Trust this repository for local workflow execution\n  --version           Print the version\n  --help              Show this help`);
+  console.log(`ActUI ${packageJson.version}\n\nLaunch dashboard:\n  actui [repository] --trust\n\nAgent and JSON commands:\n  actui discover [repository] --json\n  actui run --workflow <file> [options] --json\n  actui wait <run-id> [--after-cursor 0] --json\n  actui get <run-id> --json\n  actui logs <run-id> [--failed] [--from 1] [--to 200] --json\n  actui cancel <run-id> --json\n  actui rerun-failed <run-id> [--files a.ts,b.ts] --json\n  actui mcp\n  actui install-skill\n\nRun options:\n  --event <name>              Workflow event (default: pull_request)\n  --event-payload <file>      JSON event payload file\n  --job <id>                  Run a specific job\n  --platform <mapping>        Act runner mapping; repeatable\n  --matrix <name:value>       Matrix filter; repeatable\n  --concurrency <count>       Concurrent Act jobs\n  --architecture <value>      Container architecture\n  --offline                   Use cached actions only\n  --artifacts                 Enable the local artifact server\n  --verbose                   Include Act debug output\n  --approved                  Approve protected jobs\n  --act-arg <argument>        Extra Act argument for this trusted session; repeatable\n  --agent <name>              Agent initiator name\n  --attempt <number>          Current agent attempt\n  --max-attempts <number>     Agent retry limit\n\nLaunch options:\n  --port <port>       Browser-facing port\n  --act-path <path>   Use a specific Act executable\n  --no-open           Do not open the browser\n  --trust             Trust this repository for local workflow execution\n  --version           Print the version\n  --help              Show this help`);
+}
+
+function repeated(value) {
+  return value === undefined ? [] : Array.isArray(value) ? value : [value];
+}
+
+function parseMatrix(value) {
+  const matrix = {};
+  for (const entry of repeated(value)) {
+    const separator = entry.indexOf(":");
+    if (separator < 1) throw new Error(`Invalid --matrix value: ${entry}. Expected name:value.`);
+    const name = entry.slice(0, separator);
+    (matrix[name] ??= []).push(entry.slice(separator + 1));
+  }
+  return matrix;
 }
 
 function optionValues(argv) {
@@ -121,10 +137,19 @@ async function runCommand(command, argv) {
   if (command === "run") {
     const workflow = values.get("workflow");
     const workflowIds = Array.isArray(workflow) ? workflow : workflow ? [workflow] : [];
+    let eventPayload;
+    if (values.get("event-payload")) {
+      const eventPayloadPath = path.resolve(String(values.get("event-payload")));
+      eventPayload = JSON.parse(await readFile(eventPayloadPath, "utf8"));
+      if (!eventPayload || typeof eventPayload !== "object" || Array.isArray(eventPayload)) throw new Error("--event-payload must contain a JSON object.");
+    }
     const result = await apiRequest("/api/runs", { method: "POST", body: {
       event: values.get("event") || "pull_request",
       workflowIds,
       jobId: values.get("job"),
+      eventPayload,
+      actArgs: repeated(values.get("act-arg")),
+      matrix: parseMatrix(values.get("matrix")),
       concurrency: Number(values.get("concurrency")) || 4,
       architecture: values.get("architecture"),
       platform: values.get("platform"),
@@ -161,10 +186,15 @@ async function launch(argv) {
   let actPath = values.get("act-path") || process.env.ACTUI_ACT_PATH || await findExecutable("act");
   if (actPath) actPath = await realpath(path.resolve(actPath));
   const dockerPath = await findExecutable("docker");
-  const [act, docker] = await Promise.all([inspect(actPath, ["--version"], "Act"), inspect(dockerPath, ["version", "--format", "Docker {{.Server.Version}}"], "Docker")]);
+  const [act, docker, dockerHost, githubRepository] = await Promise.all([
+    inspect(actPath, ["--version"], "Act"),
+    inspect(dockerPath, ["version", "--format", "Docker {{.Server.Version}}"], "Docker"),
+    resolveDockerHost(dockerPath),
+    resolveGitHubRepository(repo),
+  ]);
   const actInstallation = actInstallationFor();
   const trusted = Boolean(values.get("trust"));
-  const manager = new RunManager({ repo, actPath: act.available ? actPath : null, actInstallation, workflows, trusted });
+  const manager = new RunManager({ repo, actPath: act.available ? actPath : null, actInstallation, workflows, trusted, dockerHost, githubRepository });
   await manager.initialize();
 
   const token = crypto.randomBytes(24).toString("base64url");
@@ -177,7 +207,7 @@ async function launch(argv) {
 
   const baseUrl = `http://127.0.0.1:${mainPort}`;
   const dashboardUrl = `${baseUrl}/?token=${encodeURIComponent(token)}`;
-  const health = { product: "ActUI", version: packageJson.version, repo, repoName: path.basename(repo), act: { ...act, installation: actInstallation }, docker, trusted, dashboardUrl };
+  const health = { product: "ActUI", version: packageJson.version, repo, repoName: path.basename(repo), act: { ...act, installation: actInstallation }, docker: { ...docker, host: dockerHost }, trusted, dashboardUrl };
   const server = createServer({ token, uiPort, health, workflows: workflows.map(publicWorkflow), manager });
   await new Promise((resolve, reject) => { server.once("error", reject); server.listen(mainPort, "127.0.0.1", resolve); });
   await mkdir(path.dirname(sessionPath()), { recursive: true });

@@ -23,7 +23,7 @@
 
 ## Cursor change
 
-`GET /api/runs/{id}/changes?after={cursor}&timeout={milliseconds}` returns at most the changes retained after the supplied cursor. Waiting is bounded to 30 seconds.
+`GET /api/runs/{id}/changes?after={cursor}&timeout={milliseconds}` returns at most the changes retained after the supplied cursor. Waiting is bounded to 30 seconds. The response envelope includes `nextCursor`; pass it as `after` on the next request (or as `afterCursor` to `wait_for_run`).
 
 ```json
 {
@@ -40,7 +40,7 @@ Consecutive log events are compacted into `logs.available` with a bounded
 `logRange` object: `{ "from": 10, "to": 24, "count": 15 }`. Fetch only that
 range with `read_logs` when its contents are relevant.
 
-Persist the largest returned cursor and supply it as `after` on the next wait. An empty `changes` array means the bounded wait elapsed, not that the run disappeared.
+Persist `nextCursor` and supply it as `after` on the next wait. An empty `changes` array means the bounded wait elapsed, not that the run disappeared; `nextCursor` will be unchanged.
 
 ## Failure result
 
