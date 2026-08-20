@@ -33,6 +33,8 @@ Use ActUI as the single source of truth for local CI state. Keep the human dashb
 
 Prefer MCP tools when configured. Otherwise use the JSON CLI. Do not start a second dashboard or runner when one session is active.
 
+On macOS the shared session file is `~/Library/Caches/actui/session.json`; on Linux it is `${XDG_CACHE_HOME:-~/.cache}/actui/session.json`.
+
 - Discovery: `discover_workflows` / `actui discover . --json`
 - Start: `start_run` / `actui run --workflow <file> --event <event> --json`
 - Wait: `wait_for_run` / `actui wait <id> --after-cursor <n> --json`

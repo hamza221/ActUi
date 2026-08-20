@@ -41,6 +41,8 @@ export type LogEntry = {
   time: string;
   level: string;
   message: string;
+  stream?: "act" | "step";
+  step?: string;
   workflowId?: string;
   jobId?: string;
 };
@@ -92,7 +94,7 @@ export type Health = {
       mitigations: string[];
     };
   };
-  docker: { available: boolean; version?: string; error?: string };
+  docker: { available: boolean; version?: string; error?: string; host?: string };
   trusted?: boolean;
   dashboardUrl?: string;
 };
@@ -115,6 +117,7 @@ export type RunRequest = {
   pull?: boolean;
   artifacts?: boolean;
   verbose?: boolean;
+  actArgs?: string[];
   initiator?: { type: "human" | "agent"; name: string };
   agent?: { name?: string; phase?: string; attempt?: number; maxAttempts?: number; filesChanged?: string[] };
   approved?: boolean;

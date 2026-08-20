@@ -1,0 +1,11 @@
+#!/bin/sh
+event_path=""
+previous=""
+for argument in "$@"; do
+  if [ "$previous" = "--eventpath" ]; then event_path="$argument"; fi
+  previous="$argument"
+done
+payload="$(tr -d '\n' < "$event_path")"
+printf '%s\n' "capture docker=$DOCKER_HOST args=$* payload=$payload"
+printf '%s\n' '{"jobID":"test","job":"CI/Test","jobResult":"success","level":"info","msg":"🏁 Job succeeded"}'
+exit 0

@@ -18,9 +18,9 @@ ActUI exposes one loopback HTTP control plane to the dashboard, JSON CLI, and MC
 
 ## Cursor semantics
 
-Each material run change increments a run-local integer cursor. A client retains the greatest observed cursor and provides it as `after` on the next wait. Changes are ordered and retained in a bounded ring. Consecutive log events are compacted into one `logs.available` change with a `{from,to,count}` log range. A bounded wait briefly coalesces live log bursts, returns early for state changes, and returns an empty `changes` array on timeout.
+Each material run change increments a run-local integer cursor. Every changes response includes `nextCursor`; pass that exact value as `after` (or `afterCursor` through MCP/CLI) on the next wait. `cursor` remains as a compatibility alias. Changes are ordered and retained in a bounded ring. Consecutive log events are compacted into one `logs.available` change with a `{from,to,count}` log range. A bounded wait briefly coalesces live log bursts, returns early for state changes, and returns an empty `changes` array on timeout with `nextCursor` unchanged.
 
-Log IDs are independent run-local integers. Failure results include the relevant log range, allowing agents to avoid reading unrelated output.
+Log IDs are independent run-local integers. Log entries include `stream: "step"` for step stdout/stderr and `stream: "act"` for Act lifecycle or container chatter; attributed entries may also include `step`. Failure results include the relevant log range, allowing agents to avoid reading unrelated output.
 
 ## Statuses
 

@@ -90,7 +90,7 @@ export function createServer({ token, uiPort, health, workflows, manager }) {
           : manager.changesAfter(changesMatch[1], cursor);
         return changes === null
           ? json(response, 404, { error: "Run not found." })
-          : json(response, 200, { runId: changesMatch[1], afterCursor: cursor, cursor: changes.at(-1)?.cursor ?? cursor, changes });
+          : json(response, 200, { runId: changesMatch[1], afterCursor: cursor, cursor: changes.at(-1)?.cursor ?? cursor, nextCursor: changes.at(-1)?.cursor ?? cursor, changes });
       }
       const failedMatch = url.pathname.match(/^\/api\/runs\/([0-9a-f-]+)\/failed$/i);
       if (request.method === "GET" && failedMatch) {

@@ -43,7 +43,7 @@ actui . --act-path /custom/path/to/act --trust
 
 ```bash
 actui discover . --json
-actui run --workflow ci.yml --event pull_request --json
+actui run --workflow ci.yml --event pull_request --event-payload event.json --json
 actui wait <run-id> --after-cursor 12 --json
 actui get <run-id> --json
 actui logs <run-id> --failed --json
@@ -52,7 +52,7 @@ actui cancel <run-id> --json
 actui rerun-failed <run-id> --files src/cart.ts,src/cart.test.ts --json
 ```
 
-`wait` is cursor-based and bounded to 30 seconds. Agents receive concise state changes and fetch selected log ranges only when a failure requires them.
+`run` also accepts job, platform, matrix, offline, artifact, verbose, approval, and trusted-session `--act-arg` options; use `actui --help` for the full list. `wait` is cursor-based and bounded to 30 seconds. Pass the returned `nextCursor` to the next call. Agents receive concise state changes and fetch selected log ranges only when a failure requires them.
 
 Start the provider-neutral local MCP server with:
 
